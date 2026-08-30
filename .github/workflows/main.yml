@@ -1,0 +1,113 @@
+name: Compilar Transcritor Windows V4 Testado
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+
+      - name: Atualizar ferramentas
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Instalar PyInstaller
+        run: pip install pyinstaller==6.10.0
+
+      - name: Testar imports no Python
+        shell: powershell
+        run: |
+          python -c "import requests,certifi,urllib3,idna,charset_normalizer; print('HTTP OK')"
+          python -c "import faster_whisper,ctranslate2,huggingface_hub,tokenizers,av,reportlab; print('WHISPER OK')"
+          python -c "import tkinter; print('TKINTER OK')"
+
+      - name: Compilar EXE único
+        shell: cmd
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --onefile
+          --windowed
+          --name TranscritorAudioV4
+          --hidden-import=requests
+          --hidden-import=certifi
+          --hidden-import=urllib3
+          --hidden-import=idna
+          --hidden-import=charset_normalizer
+          --hidden-import=huggingface_hub
+          --hidden-import=tokenizers
+          --hidden-import=av
+          --collect-all=faster_whisper
+          --collect-all=ctranslate2
+          --collect-all=huggingface_hub
+          --collect-all=tokenizers
+          --collect-all=av
+          --collect-all=reportlab
+          --collect-all=requests
+          --collect-all=certifi
+          app.py
+
+      - name: Conferir se o EXE existe
+        shell: powershell
+        run: |
+          if (!(Test-Path "dist\TranscritorAudioV4.exe")) {
+            Write-Error "O EXE não foi gerado."
+            exit 1
+          }
+
+      - name: TESTE REAL DO EXE COMPILADO
+        shell: powershell
+        run: |
+          $p = Start-Process `
+            -FilePath ".\dist\TranscritorAudioV4.exe" `
+            -ArgumentList "--self-test" `
+            -PassThru `
+            -Wait
+          if ($p.ExitCode -ne 0) {
+            Write-Error "O EXE compilou, mas falhou no teste real. Não será publicado."
+            exit 1
+          }
+
+      - name: Criar instruções
+        shell: powershell
+        run: |
+          @"
+          TRANSCRITOR DE ÁUDIO WINDOWS V4
+
+          1. Extraia o ZIP.
+          2. Abra TranscritorAudioV4.exe.
+          3. Escolha o áudio da pasta Downloads.
+          4. Use MEDIUM.
+          5. Clique em INICIAR TRANSCRIÇÃO.
+          6. O progresso, TXT e PDF serão salvos em Downloads.
+          "@ | Set-Content "dist\LEIA-ME.txt" -Encoding UTF8
+
+      - name: Compactar
+        shell: powershell
+        run: |
+          Compress-Archive `
+            -Path "dist\TranscritorAudioV4.exe","dist\LEIA-ME.txt" `
+            -DestinationPath "TranscritorAudio-Windows-V4-TESTADO.zip" `
+            -Force
+
+      - name: Publicar somente após teste
+        uses: actions/upload-artifact@v4
+        with:
+          name: TranscritorAudio-Windows-V4-TESTADO
+          path: TranscritorAudio-Windows-V4-TESTADO.zip
+          retention-days: 30
